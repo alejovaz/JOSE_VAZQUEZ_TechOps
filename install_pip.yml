@@ -1,0 +1,40 @@
+#---
+#
+#- hosts: aws
+#  become: true
+#  tasks:
+
+  - name: Add EPEL repository
+    yum_repository:
+           name: epel
+           description: EPEL YUM repo
+           baseurl: https://download.fedoraproject.org/pub/epel/$releasever/$basearch/
+           gpgcheck: no
+
+  - name: install python2-pip
+    yum:
+        name:
+          - python2-pip
+          - nginx
+        state: present
+
+  - name: Force pip upgrade to the latest version
+    shell: pip install --upgrade pip
+
+  - name: install latest pyOpenSSL, pyMysql, botocore & boto3  with pip
+    pip:
+      name: 
+#        - pyOpenSSL
+        - PyMySQL
+        - botocore
+        - boto3
+#        - enum
+      state: latest
+
+  - name: Deactivate EPEL  repository
+    yum_repository:
+           name: epel
+           description: EPEL YUM repo
+           baseurl: https://download.fedoraproject.org/pub/epel/$releasever/$basearch/
+           gpgcheck: no
+           enabled: no

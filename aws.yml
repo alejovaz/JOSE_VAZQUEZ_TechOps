@@ -1,0 +1,179 @@
+---
+
+- hosts: aws
+  become: true
+  tasks:
+
+  - name: Include a code to install latest version of pip with epel repository then deactivate epel
+    include: install_pip.yml
+
+  - name: Register as user (alejo.vazquez) 
+    redhat_subscription:
+      state: present
+      username: alejo.vazquez@gmail.com
+      password: datar1999
+      auto_attach: true
+
+  - name: Enable a RHSM repository
+    rhsm_repository:
+      name: 
+        - rhel-7-server-extras-rpms
+        - rhel-7-server-optional-rpms
+        - rhel-server-rhscl-7-rpms
+      state: enabled
+
+  - name: System update
+    yum:
+        name: '*'
+        state: latest
+
+# Set SELinux to permissive mode
+  - selinux:
+      policy: targeted
+      state: permissive
+
+  - name: install needed packages
+    yum:
+        name:
+          - rh-nginx18 
+          - mariadb-server 
+          - rh-php72
+          - rh-php72-php-cli
+          - rh-php72-php-fpm
+          - rh-php72-php-mysqlnd
+          - rh-php72-php-opcache
+          - rh-php72-php-gd
+          - openssl
+          - firewalld
+        state: present
+
+  - name: Remove default nginx config
+    file: name=/etc/nginx/sites-enabled/default state=absent
+
+  - name: Create directory 
+    file: name=/etc/ssl/private state=directory mode=0755
+
+  - name: Copy server.key file
+    copy:
+      src: templates/server.key
+      dest: /etc/ssl/private/server.key
+      mode: 0600
+
+  - name: Create directory
+    file: name=/etc/ssl/certs state=directory mode=0755
+
+  - name: Copy server.crt file
+    copy:
+      src: templates/server.crt
+      dest: /etc/ssl/certs/server.crt
+      mode: 0755
+
+#  - name: Generate an OpenSSL private key
+#    openssl_privatekey:
+#      path: /etc/ssl/private/server.key
+#      size: 2048
+ 
+#  - name: Generate an OpenSSL Certificate Signing Request
+#    openssl_csr:
+#      path: /etc/ssl/csr/localhost.csr
+#      privatekey_path: /etc/ssl/private/server.key
+#      force: true
+#      digest: sha256
+#      country_name: CA
+#      state_or_province_name: Quebec
+#      locality_name: Montreal
+#      organization_name: Ormuco
+#      organizational_unit_name: Ormuco
+#      email_address: alejandro.vazquez@ormuco.com
+#      common_name: localhost
+
+#  - name: Generate a self signed certificate
+#    openssl_certificate:
+#      path: /etc/ssl/certs/server.crt
+#      privatekey_path: /etc/ssl/private/server.key
+#      csr_path: /etc/ssl/csr/localhost.csr
+#      provider: selfsigned
+
+  - name: Install system nginx config
+    template:
+       src: templates/nginx.conf
+       dest: /etc/nginx/nginx.conf
+
+  - name: Create directory
+    file: name=/var/www/html state=directory mode=0755
+
+  - name: create index.html
+    template:
+         src: templates/index.html
+         dest: /var/www/html/index.html
+         mode: 0755
+
+  - name: create pets.php
+    template:
+         src: templates/pets.php
+         dest: /var/www/html/pets.php
+         mode: 0755
+
+  - name: start mariadb
+    service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+  - name: start nginx
+    service:
+        name: nginx
+        state: started
+        enabled: yes
+
+  - name: start php-fpm
+    service:
+        name: rh-php72-php-fpm 
+        state: started
+        enabled: yes
+
+# start the firewalld daemon
+
+  - name: start firewalld
+    service:
+        name: firewalld
+        state: started
+        enabled: yes
+
+# enable http, https only, ssh is enable for default.
+
+  - name: activate http in firewall
+    firewalld:
+      zone: public
+      service: http
+      permanent: yes
+      state: enabled
+
+  - name: activate https in firewall
+    firewalld:
+      zone: public
+      service: https
+      permanent: yes
+      state: enabled
+
+  - name: firewalld reload
+    command: firewall-cmd --reload
+
+  - name: Install Ormuco ssh key
+    authorized_key: user=ec2-user
+                    key="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDftZwLvh3prVYPxD01zBpehPA6NVlL+iDajlDR2PqzB3odo5gVrV+u6vTyw/TfFR70uOkzoLjxl6x7ZbwXpKBAXqD8ke8gIDOAL4wz8QSKtj1lcLiLOEW0ToKhlwHvlZnA0e/GATtCgt/2y4F+h+jG0VmO3Ae+8aayCOSPVHqKhXcdKt5Qa++/7SuUrTuBN6ApJNp7HmVbMGdSbrr4I1gxNDYONompBTwVvBswBy8ySA+BNaAnKUxsX5gJJCtNENcbtg44TMHufmn69XZeUajDtNGeOgeITAIWnuEiOY+3R70idXJZGSDRnZzs4sXYmP7k4PQq07sWuHqXVKUzYWI/ test"
+
+  - name: Copy database dump file
+    copy:
+      src: templates/pets.sql
+      dest: /tmp
+
+  - name: check if DB ormuco exists
+#    shell: mysql -e 'SHOW DATABASES;' | grep ormuco
+    shell: mysql -e "SHOW DATABASES LIKE 'ormuco'" -sN
+    register: dbstatus
+    failed_when: dbstatus.rc == 2
+
+  - name: Run mysql scripts if database ormuco don't exist
+    include: mysql.yml
+    when: dbstatus.stdout == ""

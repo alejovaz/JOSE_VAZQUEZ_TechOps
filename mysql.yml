@@ -1,0 +1,26 @@
+  - name: Create a new database with name 'ormuco'
+    mysql_db:
+      name: ormuco
+      collation: utf8_general_ci
+      encoding: utf8
+      state: present
+
+# Removes all anonymous user accounts
+  - mysql_user:
+      name: ''
+      host_all: yes
+      state: absent
+
+# Create database user with name 'ormuco' and password 'ormuco' with all database privileges
+  - mysql_user:
+      name: ormuco
+      password: ormuco
+      priv: '*.*:ALL'
+      state: present
+
+#This module is not idempotent when state is import, and will import the dump file each time if run more than once.
+  - name: Import pets.sql
+    mysql_db:
+      state: import
+      name: ormuco
+      target: /tmp/pets.sql
